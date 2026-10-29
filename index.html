@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qualidade de sequências · Phred</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&family=Spline+Sans+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#17212b;--mute:#5d6b75;--bg:#eef1f0;--panel:#fff;--line:#cfd7d4;--acc:#1d5c63;
+--q0:#c0392b;--q1:#e0a526;--q2:#5aa6a0;--q3:#1d5c63;--r:6px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Public Sans",system-ui,sans-serif}
+header{padding:28px max(20px,5vw) 8px}
+h1{font-size:1.65rem;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:1rem;margin:0 0 10px}
+header p{margin:0;color:var(--mute);max-width:64ch}
+main{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;padding:16px max(20px,5vw) 40px;align-items:start}
+@media(max-width:880px){main{grid-template-columns:1fr}}
+section,aside{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+section+section{margin-top:20px}
+.drop{display:block;border:2px dashed var(--acc);border-radius:var(--r);padding:22px 12px;text-align:center;cursor:pointer;color:var(--acc);font-weight:600}
+.drop:hover,.drop.over,.drop:focus-within{background:#e6f0ef}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.drop small{display:block;color:var(--mute);font-weight:400;margin-top:4px}
+label.f{display:block;margin-top:14px;font-size:.9rem}
+label.f input{display:block;width:100%;margin-top:4px;padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);font:inherit}
+.hint{color:var(--mute);font-size:.82rem;margin:4px 0 0}
+button{font:inherit;font-weight:600;padding:8px 14px;border:1px solid var(--acc);background:var(--acc);color:#fff;border-radius:var(--r);cursor:pointer}
+button.alt{background:#fff;color:var(--acc)}
+:focus-visible{outline:3px solid #e0a526;outline-offset:2px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--mute)}
+tbody tr{cursor:pointer}tbody tr:hover,tbody tr.on{background:#e6f0ef}
+.st{padding:2px 8px;border-radius:var(--r);border:1.5px solid;font-size:.82rem}
+.st.ok{color:#14606a;border-color:#14606a}.st.warn{color:#8a5a00;border-color:#c98a00}.st.bad{color:#a52a1d;border-color:var(--q0)}
+canvas{width:100%;height:180px;display:block}
+.seq{font:.82rem/1.7 "Spline Sans Mono",ui-monospace,monospace;word-break:break-all;margin-top:12px;max-height:240px;overflow:auto}
+.seq span{padding:1px 0}
+.b0{background:#f4c7c1}.b1{background:#f8e3a8}.b2{background:#cfe8e5}.b3{background:#a9d3d0}
+.out{opacity:.4}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--mute);margin-top:8px}
+.leg i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+#err{color:#a52a1d;font-size:.88rem;margin:10px 0 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Avaliação de qualidade de sequências</h1>
+  <p>Análise de qualidade pelos parâmetros Phred: região útil (CLR), Q médio e bases acima de um Q mínimo. Tudo roda no seu navegador; nenhum arquivo é enviado a servidor.</p>
+</header>
+<main>
+  <aside>
+    <label class="drop" id="drop">Selecionar ou arrastar arquivos
+      <small>.ab1 · .phd.1 · .fastq · .fasta + .qual</small>
+      <input type="file" id="file" multiple accept=".ab1,.abi,.fasta,.fa,.fna,.qual,.fastq,.fq,.phd,.1,.txt">
+    </label>
+    <p id="err" role="alert"></p>
+    <h2 style="margin-top:18px">Parâmetros</h2>
+    <label class="f">Q mínimo para contar bases
+      <input type="number" id="q" value="20" min="1" max="60"></label>
+    <label class="f">Probabilidade de erro do corte (trim)
+      <input type="number" id="pe" value="0.05" min="0.001" max="0.5" step="0.005"></label>
+    <p class="hint">Mesmo critério do <em>trim_alt</em> do Phred (0,05 ≈ Q13).</p>
+    <label class="f">Comprimento útil mínimo (pb)
+      <input type="number" id="minLen" value="400" min="1"></label>
+    <label class="f">Q médio mínimo (região útil)
+      <input type="number" id="minMean" value="20" min="1" max="60"></label>
+  </aside>
+
+  <div>
+    <section id="empty"><h2>Nenhuma sequência carregada</h2>
+      <p class="hint" style="font-size:.95rem">Selecione arquivos de cromatograma (.ab1), saídas do Phred (.phd.1), FASTQ, ou um par FASTA + QUAL com o mesmo nome de sequência.</p></section>
+
+    <section id="out" hidden>
+      <div class="bar">
+        <button id="csv" class="alt">Baixar tabela (CSV)</button>
+        <button id="fa" class="alt">Baixar FASTA (região útil)</button>
+        <button id="ql" class="alt">Baixar QUAL (região útil)</button>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Sequência</th><th>Bases</th><th>CLR</th><th>Útil (pb)</th><th>Q médio útil</th><th id="thq">Bases ≥ Q</th><th>% ≥ Q</th><th>Bases ≥ Q30</th><th>Status</th></tr></thead>
+        <tbody id="rows"></tbody></table></div>
+    </section>
+
+    <section id="detail" hidden>
+      <h2 id="dname"></h2>
+      <canvas id="plot" role="img" aria-label="Qualidade Phred por posição"></canvas>
+      <div class="leg"><span><i style="background:var(--q0)"></i>Q &lt; 10</span><span><i style="background:var(--q1)"></i>10–19</span><span><i style="background:var(--q2)"></i>20–29</span><span><i style="background:var(--q3)"></i>≥ 30</span><span>Trechos esmaecidos ficam fora da região útil</span></div>
+      <div class="seq" id="seq"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const LBL = {ok:'Aprovada', warn:'Limítrofe', bad:'Reprovada'};
+const esc = t => t.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const band = q => q < 10 ? 0 : q < 20 ? 1 : q < 30 ? 2 : 3;
+let seqs = [], res = [], sel = -1;
+
+const P = () => ({q:+$('#q').value, pe:+$('#pe').value, minLen:+$('#minLen').value, minMean:+$('#minMean').value});
+
+/* ---------- Leitores de formato ---------- */
+function parseAB1(buf, name){
+  const v = new DataView(buf);
+  if (String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== 'ABIF') throw Error('não é um arquivo ABIF válido');
+  const n = v.getInt32(18), off = v.getInt32(26), tags = {};
+  for (let i = 0; i < n; i++){
+    const e = off + i * 28;
+    const k = String.fromCharCode(v.getUint8(e), v.getUint8(e+1), v.getUint8(e+2), v.getUint8(e+3)) + v.getInt32(e+4);
+    const size = v.getInt32(e+12);
+    tags[k] = [size <= 4 ? e + 20 : v.getInt32(e+20), size];
+  }
+  const pb = tags.PBAS2 || tags.PBAS1, pc = tags.PCON2 || tags.PCON1;
+  if (!pb || !pc) throw Error('sem bases/qualidades (PBAS/PCON)');
+  return {name, seq: String.fromCharCode(...new Uint8Array(buf, pb[0], pb[1])).toUpperCase(), q: Array.from(new Uint8Array(buf, pc[0], pc[1]))};
+}
+function parsePhd(t, name){
+  const seq = [], q = [];
+  let on = false;
+  for (const l of t.split(/\r?\n/)){
+    if (l.startsWith('BEGIN_DNA')) on = true;
+    else if (l.startsWith('END_DNA')) break;
+    else if (on){ const f = l.trim().split(/\s+/); if (f.length >= 2){ seq.push(f[0].toUpperCase()); q.push(+f[1]); } }
+  }
+  if (!seq.length) throw Error('bloco BEGIN_DNA não encontrado');
+  return {name, seq: seq.join(''), q};
+}
+function parseFastq(t){
+  const L = t.split(/\r?\n/).filter(Boolean), out = [];
+  for (let i = 0; i + 3 < L.length; i += 4)
+    out.push({name: L[i].slice(1).split(/\s/)[0], seq: L[i+1].toUpperCase(), q: [...L[i+3]].map(c => c.charCodeAt(0) - 33)});
+  return out;
+}
+function parseFasta(t){
+  return t.split(/^>/m).filter(x => x.trim()).map(b => {
+    const l = b.split(/\r?\n/);
+    return [l[0].trim().split(/\s/)[0], l.slice(1).join('').replace(/\s/g, '').toUpperCase()];
+  });
+}
+function parseQual(t){
+  const o = {};
+  t.split(/^>/m).filter(x => x.trim()).forEach(b => {
+    const l = b.split(/\r?\n/);
+    o[l[0].trim().split(/\s/)[0]] = l.slice(1).join(' ').trim().split(/\s+/).map(Number);
+  });
+  return o;
+}
+
+async function load(files){
+  const errs = [], quals = {}, fastas = [];
+  const add = s => {
+    if (s.seq.length !== s.q.length) errs.push(`${s.name}: ${s.seq.length} bases e ${s.q.length} valores de qualidade`);
+    else if (s.seq.length) seqs.push(s);
+  };
+  for (const f of files){
+    const n = f.name, ext = n.split('.').pop().toLowerCase(), base = n.replace(/\.(ab1|abi|phd\.1|phd|fastq|fq)$/i, '');
+    try {
+      if (ext === 'ab1' || ext === 'abi') add(parseAB1(await f.arrayBuffer(), base));
+      else if (n.includes('.phd') || ext === '1') add(parsePhd(await f.text(), base));
+      else if (ext === 'fastq' || ext === 'fq') parseFastq(await f.text()).forEach(add);
+      else if (ext === 'qual') Object.assign(quals, parseQual(await f.text()));
+      else fastas.push(await f.text());
+    } catch (e){ errs.push(`${n}: ${e.message}`); }
+  }
+  for (const t of fastas) for (const [name, seq] of parseFasta(t)){
+    if (!quals[name]) errs.push(`${name}: arquivo .qual correspondente não encontrado`);
+    else add({name, seq, q: quals[name]});
+  }
+  $('#err').textContent = errs.join(' | ');
+  sel = -1; render();
+}
+
+/* ---------- Análise ---------- */
+// Corte de qualidade pelo critério do Phred (trim_alt): segmento de máxima soma de (pe - p_erro)
+function trim(q, pe){
+  let best = 0, cur = 0, start = 0, bs = 0, be = 0;
+  q.forEach((v, i) => {
+    cur += pe - Math.pow(10, -v / 10);
+    if (cur <= 0){ cur = 0; start = i + 1; }
+    else if (cur > best){ best = cur; bs = start; be = i + 1; }
+  });
+  return [bs, be];
+}
+function analyze(s, p){
+  const [a, b] = trim(s.q, p.pe), t = s.q.slice(a, b);
+  const mean = t.length ? t.reduce((x, y) => x + y, 0) / t.length : 0;
+  const cls = t.length >= p.minLen && mean >= p.minMean ? 'ok' : t.length >= p.minLen / 2 ? 'warn' : 'bad';
+  return {a, b, len: s.q.length, tlen: t.length, mean, nq: s.q.filter(v => v >= p.q).length, q30: s.q.filter(v => v >= 30).length, cls};
+}
+
+/* ---------- Interface ---------- */
+function render(){
+  const p = P();
+  res = seqs.map(s => ({s, r: analyze(s, p)}));
+  $('#empty').hidden = seqs.length > 0; $('#out').hidden = !seqs.length;
+  $('#thq').textContent = `Bases ≥ Q${p.q}`;
+  $('#rows').innerHTML = res.map(({s, r}, i) =>
+    `<tr data-i="${i}" tabindex="0" class="${i === sel ? 'on' : ''}"><td>${esc(s.name)}</td><td>${r.len}</td><td>${r.tlen ? `${r.a + 1}–${r.b}` : '—'}</td><td>${r.tlen}</td><td>${r.mean.toFixed(1)}</td><td>${r.nq}</td><td>${(100 * r.nq / r.len).toFixed(1)}%</td><td>${r.q30}</td><td><b class="st ${r.cls}">${LBL[r.cls]}</b></td></tr>`).join('');
+  if (sel >= 0 && res[sel]) detail(p); else $('#detail').hidden = true;
+}
+function detail(p){
+  const {s, r} = res[sel];
+  $('#detail').hidden = false; $('#dname').textContent = s.name;
+  $('#seq').innerHTML = [...s.seq].map((b, i) => `<span class="b${band(s.q[i])}${i < r.a || i >= r.b ? ' out' : ''}">${b}</span>`).join('');
+  plot(s, r, p);
+}
+function plot(s, r, p){
+  const c = $('#plot'), d = devicePixelRatio || 1, w = c.clientWidth, h = 180, top = 12, bot = 18, max = Math.max(60, ...s.q);
+  c.width = w * d; c.height = h * d;
+  const x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0);
+  const ph = h - top - bot, bw = (w - 28) / s.q.length, col = ['#c0392b', '#e0a526', '#5aa6a0', '#1d5c63'];
+  x.font = '11px "Public Sans",sans-serif'; x.fillStyle = '#5d6b75'; x.strokeStyle = '#cfd7d4';
+  for (const g of [0, 20, 40, 60]){
+    const y = top + ph - g / max * ph;
+    x.beginPath(); x.moveTo(24, y); x.lineTo(w, y); x.stroke(); x.fillText(g, 0, y + 4);
+  }
+  s.q.forEach((v, i) => {
+    x.globalAlpha = i < r.a || i >= r.b ? .3 : 1; x.fillStyle = col[band(v)];
+    const bh = v / max * ph; x.fillRect(28 + i * bw, top + ph - bh, Math.max(bw - .3, .5), bh);
+  });
+  x.globalAlpha = 1; x.strokeStyle = '#17212b'; x.setLineDash([4, 3]);
+  const y = top + ph - p.q / max * ph; x.beginPath(); x.moveTo(24, y); x.lineTo(w, y); x.stroke(); x.setLineDash([]);
+  x.fillStyle = '#5d6b75'; x.fillText('posição (pb) →', w - 82, h - 3);
+}
+
+/* ---------- Eventos e exportação ---------- */
+const dl = (n, t) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([t], {type: 'text/plain'})); a.download = n; a.click(); URL.revokeObjectURL(a.href); };
+const wrap = t => (t.match(/.{1,60}/g) || []).join('\n');
+const useful = () => res.filter(({r}) => r.tlen > 0);
+
+$('#file').onchange = e => load([...e.target.files]);
+['dragover', 'dragleave', 'drop'].forEach(ev => $('#drop').addEventListener(ev, e => {
+  e.preventDefault(); $('#drop').classList.toggle('over', ev === 'dragover');
+  if (ev === 'drop') load([...e.dataTransfer.files]);
+}));
+['q', 'pe', 'minLen', 'minMean'].forEach(id => $('#' + id).oninput = render);
+const pick = e => { const tr = e.target.closest('tr[data-i]'); if (tr){ sel = +tr.dataset.i; render(); $('#detail').scrollIntoView({block: 'nearest'}); } };
+$('#rows').onclick = pick;
+$('#rows').onkeydown = e => { if (e.key === 'Enter') pick(e); };
+addEventListener('resize', () => sel >= 0 && res[sel] && plot(res[sel].s, res[sel].r, P()));
+
+$('#csv').onclick = () => dl('qualidade.csv',
+  'sequencia,bases,clr_inicio,clr_fim,comprimento_util,q_medio_util,bases_qmin,pct_qmin,bases_q30,status\n' +
+  res.map(({s, r}) => [`"${s.name}"`, r.len, r.tlen ? r.a + 1 : 0, r.b, r.tlen, r.mean.toFixed(2), r.nq, (100 * r.nq / r.len).toFixed(2), r.q30, LBL[r.cls]].join(',')).join('\n'));
+$('#fa').onclick = () => dl('regiao_util.fasta',
+  useful().map(({s, r}) => `>${s.name} clr=${r.a + 1}-${r.b}\n${wrap(s.seq.slice(r.a, r.b))}`).join('\n') + '\n');
+$('#ql').onclick = () => dl('regiao_util.qual',
+  useful().map(({s, r}) => `>${s.name} clr=${r.a + 1}-${r.b}\n${(s.q.slice(r.a, r.b).join(' ').match(/(?:\d+ ?){1,25}/g) || []).map(x => x.trim()).join('\n')}`).join('\n') + '\n');
+</script>
+</body>
+</html>
