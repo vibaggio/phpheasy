@@ -24,17 +24,7 @@ Página web estática para avaliar a qualidade de sequências de DNA com base em
 
 Abra `index.html` no navegador. Não há dependências nem etapa de build.
 
-## Publicar no GitHub Pages
-
-1. Crie um repositório e envie `index.html` e `README.md` para a branch `main`.
-2. Em **Settings → Pages**, escolha **Deploy from a branch**, branch `main`, pasta `/ (root)`.
-3. O site fica disponível em `https://<usuario>.github.io/<repositorio>/`.
-
 ## Limitações
 
 - Os valores de qualidade de arquivos `.ab1` são os do basecaller do sequenciador, não uma nova chamada de bases pelo Phred. Para recalcular com o Phred original, rode o programa localmente e carregue os `.phd.1` gerados.
 - Não há montagem (Phrap) nem remoção de vetor; o site avalia apenas qualidade.
-
-## Licença
-
-Adicione um arquivo `LICENSE` de sua escolha (por exemplo, MIT) pelo botão *Add file* do GitHub.
